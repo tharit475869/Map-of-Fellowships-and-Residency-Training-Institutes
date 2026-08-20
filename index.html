@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Dashboard ค้นหาโรงพยาบาลต้นสังกัดและโรงเรียนแพทย์ สำหรับแพทย์ประจำบ้าน</title>
+
+    <!-- นำเข้า Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- นำเข้า CSS ของ Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --secondary: #0ea5e9;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Kanit', sans-serif;
+            background-color: var(--background);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background-color: var(--surface);
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+            color: var(--primary);
+        }
+
+        .dashboard-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .table-section {
+            flex: 1;
+            background: var(--surface);
+            overflow-y: auto;
+            overflow-x: auto;
+            border-bottom: 2px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            min-width: 650px;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            background-color: #f1f5f9;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            z-index: 5;
+        }
+
+        th, td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        th {
+            font-weight: 500;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .category-header {
+            background-color: #e0f2fe;
+            color: #0369a1;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 8px 14px;
+        }
+
+        tr.data-row {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        tr.data-row:hover {
+            background-color: #f0fdf4;
+        }
+        
+        tr.active-row {
+            background-color: #dcfce7 !important;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .tag-train-in { background-color: #fef08a; color: #854d0e; }
+        .tag-train-out { background-color: #e2e8f0; color: #334155; }
+        .tag-train-mix { background-color: #dbeafe; color: #1e40af; }
+
+        .map-section {
+            flex: 1;
+            min-height: 45vh;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 10px;
+            font-family: 'Kanit', sans-serif;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .hospital-popup h3 { margin: 0 0 6px 0; color: var(--primary); font-size: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .hospital-popup p { margin: 4px 0; font-size: 13px; color: var(--text-main); }
+        .hospital-popup .badge { display: inline-block; padding: 2px 6px; background: #e0f2fe; color: #0284c7; border-radius: 4px; font-size: 11px; margin-bottom: 5px;}
+        .btn-nav {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 6px 12px;
+            background-color: #10b981;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 12px;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        @media (min-width: 768px) {
+            .dashboard-container { flex-direction: row; }
+            .table-section { flex: 0 0 55%; border-right: 2px solid var(--border); border-bottom: none; }
+            .map-section { flex: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🏥 แผนที่ทุนและสถาบันฝึกอบรมแพทย์เฉพาะทาง</h1>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px;">*อัปเดตข้อมูลรอบรับสมัครทุนต้นสังกัด/แพทย์ประจำบ้าน ล่าสุดของปีการศึกษา 2569</div>
+    </div>
+
+    <div class="dashboard-container">
+        <div class="table-section">
+            <table id="hospitalTable">
+                <thead>
+                    <tr>
+                        <th>โรงพยาบาล/สถาบัน</th>
+                        <th>สังกัด</th>
+                        <th>จังหวัด (เวลาเดินทาง)</th>
+                        <th>รูปแบบการเรียน</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- โค้ด JS จะสร้างข้อมูลตรงนี้ -->
+                </tbody>
+            </table>
+        </div>
+        <div class="map-section">
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // ปรับแก้พิกัด (Calibrate) คอนโด Hive สาทร
+        const homeCoords = [13.721453, 100.495806]; 
+        
+        const hospitals = [
+            // ==========================================
+            // 🎓 กลุ่ม 1: สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์ (สอนเอง)
+            // ==========================================
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.จุฬาลงกรณ์", org: "สภากาชาดไทย", prov: "กทม.", time: "30-50 นาที", 
+              lat: 13.731777, lng: 100.536762, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "02 256 4000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.รามาธิบดี", org: "ม.มหิดล", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.767180, lng: 100.526685, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "02 200 3000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.ศิริราช", org: "ม.มหิดล", prov: "กทม.", time: "1-1.5 ชม.", 
+              lat: 13.757303, lng: 100.485189, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "02 419 7000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.พระมงกุฎเกล้า", org: "กรมแพทย์ทหารบก", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.768132, lng: 100.533256, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ก.ย. - ต.ค. 68", phone: "02 763 9300" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.ตำรวจ", org: "สำนักงานตำรวจแห่งชาติ", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.743781, lng: 100.538562, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ก.ย. - ต.ค. 68", phone: "02 207 6000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.วชิรพยาบาล", org: "ม.นวมินทราธิราช", prov: "กทม.", time: "1-1.5 ชม.", 
+              lat: 13.780164, lng: 100.506509, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "02 244 3000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.ธรรมศาสตร์ฯ", org: "ม.ธรรมศาสตร์", prov: "ปทุมธานี", time: "2-2.5 ชม.", 
+              lat: 14.072242, lng: 100.601725, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ต.ค. - พ.ย. 68", phone: "02 926 9999" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.ภูมิพลอดุลยเดช", org: "กรมแพทย์ทหารอากาศ", prov: "กทม.", time: "2-2.5 ชม.", 
+              lat: 13.905615, lng: 100.622641, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ก.ย. - ต.ค. 68", phone: "02 534 7000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.เลิดสิน", org: "กรมการแพทย์", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.720230, lng: 100.516568, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ส.ค. - ต.ค. 68", phone: "02 353 9801" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.ราชวิถี", org: "กรมการแพทย์", prov: "กทม.", time: "1-1.5 ชม.", 
+              lat: 13.764516, lng: 100.535973, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ส.ค. - ต.ค. 68", phone: "02 206 2900" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.นพรัตนราชธานี", org: "กรมการแพทย์", prov: "กทม.", time: "1.5-2 ชม.", 
+              lat: 13.816480, lng: 100.687413, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "ส.ค. - ต.ค. 68", phone: "02 548 1000" },
+            { cat: "🎓 สถาบันฝึกอบรมหลัก / โรงเรียนแพทย์", name: "รพ.เมตตาประชารักษ์", org: "กรมการแพทย์", prov: "นครปฐม", time: "1.5-2 ชม.", 
+              lat: 13.738872, lng: 100.271501, trainType: "สอนเองที่ รพ. (จักษุฯ)", trainClass: "tag-train-in", lastOpen: "ส.ค. - ต.ค. 68", phone: "034 388 700" },
+
+            // ==========================================
+            // 🏥 กลุ่ม 2: โรงพยาบาลศูนย์/ทั่วไป (รพศ./รพท.)
+            // ==========================================
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.ตากสิน", org: "สำนักการแพทย์ กทม.", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.729906, lng: 100.509867, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "19 ส.ค. - 6 ก.ย. 68", phone: "02 437 0123" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.เจริญกรุงประชารักษ์", org: "สำนักการแพทย์ กทม.", prov: "กทม.", time: "40-60 นาที", 
+              lat: 13.692386, lng: 100.493409, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "19 ส.ค. - 6 ก.ย. 68", phone: "02 289 7000" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.กลาง", org: "สำนักการแพทย์ กทม.", prov: "กทม.", time: "1-1.5 ชม.", 
+              lat: 13.746187, lng: 100.510526, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "19 ส.ค. - 6 ก.ย. 68", phone: "02 220 8000" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.สิรินธร", org: "สำนักการแพทย์ กทม.", prov: "กทม.", time: "1.5-2 ชม.", 
+              lat: 13.723326, lng: 100.703273, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "19 ส.ค. - 6 ก.ย. 68", phone: "02 328 6900" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.พระนั่งเกล้า", org: "สป.สธ.", prov: "นนทบุรี", time: "1.5-2 ชม.", 
+              lat: 13.873200, lng: 100.478900, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "02 528 4567" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.สมุทรปราการ", org: "สป.สธ.", prov: "สมุทรปราการ", time: "1.5-2 ชม.", 
+              lat: 13.593685, lng: 100.600645, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "02 701 8132" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.สมุทรสาคร", org: "สป.สธ.", prov: "สมุทรสาคร", time: "1.5-2 ชม.", 
+              lat: 13.542841, lng: 100.274381, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "034 427 099" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.นครปฐม", org: "สป.สธ.", prov: "นครปฐม", time: "2.5-3 ชม.", 
+              lat: 13.818163, lng: 100.062831, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "034 240 000" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.พุทธโสธร", org: "สป.สธ.", prov: "ฉะเชิงเทรา", time: "2.5-3 ชม.", 
+              lat: 13.686036, lng: 101.071728, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "038 814 375" },
+            { cat: "🏥 รพ.ศูนย์/ทั่วไป (รพศ./รพท.)", name: "รพ.พระนครศรีอยุธยา", org: "สป.สธ.", prov: "อยุธยา", time: "2.5-3 ชม.", 
+              lat: 14.349479, lng: 100.564619, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "035 958 666" },
+
+            // ==========================================
+            // 🏢 กลุ่ม 3: ศูนย์การแพทย์และสถาบันเฉพาะทาง
+            // ==========================================
+            { cat: "🏢 ศูนย์การแพทย์และสถาบันเฉพาะทาง", name: "ศูนย์การแพทย์ปัญญานันทภิกขุ ชลประทาน", org: "ม.ศรีนครินทรวิโรฒ", prov: "นนทบุรี", time: "1.5-2 ชม.", 
+              lat: 13.900293, lng: 100.501538, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "02 502 2345" },
+            { cat: "🏢 ศูนย์การแพทย์และสถาบันเฉพาะทาง", name: "ศูนย์การแพทย์สมเด็จพระเทพฯ", org: "ม.ศรีนครินทรวิโรฒ", prov: "นครนายก", time: "3-3.5 ชม.", 
+              lat: 14.114757, lng: 100.985012, trainType: "สอนเองที่ รพ.", trainClass: "tag-train-in", lastOpen: "1-31 ต.ค. 68", phone: "037 395 085" },
+            { cat: "🏢 ศูนย์การแพทย์และสถาบันเฉพาะทาง", name: "ศูนย์การแพทย์กาญจนาภิเษก", org: "ม.มหิดล", prov: "นครปฐม", time: "2-2.5 ชม.", 
+              lat: 13.792823, lng: 100.323675, trainType: "สอนเองบางสาขา/ส่งเรียน", trainClass: "tag-train-mix", lastOpen: "1-31 ต.ค. 68", phone: "02 849 6600" },
+            { cat: "🏢 ศูนย์การแพทย์และสถาบันเฉพาะทาง", name: "สถาบันโรคทรวงอก", org: "กรมการแพทย์", prov: "นนทบุรี", time: "1.5-2 ชม.", 
+              lat: 13.861217, lng: 100.520448, trainType: "สอนเองที่ รพ. (เฉพาะทาง)", trainClass: "tag-train-in", lastOpen: "ส.ค. - ต.ค. 68", phone: "02 543 7054" },
+            
+            // ==========================================
+            // 🏥 กลุ่ม 4: โรงพยาบาลชุมชน (รพช.) สังกัด สป.สธ.
+            // ==========================================
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.บางไทร", org: "สป.สธ.", prov: "อยุธยา", time: "1.5-2 ชม.", 
+              lat: 14.213233, lng: 100.496556, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "035 371 180" },
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.ท่าเรือ", org: "สป.สธ.", prov: "อยุธยา", time: "2.5-3 ชม.", 
+              lat: 14.558359, lng: 100.728795, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "035 341 054" },
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.เสนา", org: "สป.สธ.", prov: "อยุธยา", time: "2-2.5 ชม.", 
+              lat: 14.327599, lng: 100.399650, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "035 201 190" },
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.บางปะอิน", org: "สป.สธ.", prov: "อยุธยา", time: "1.5-2 ชม.", 
+              lat: 14.230777, lng: 100.584102, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "035 261 142" },
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.ไทรน้อย", org: "สป.สธ.", prov: "นนทบุรี", time: "1.5-2 ชม.", 
+              lat: 13.978183, lng: 100.315053, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "02 597 1198" },
+            { cat: "🏥 โรงพยาบาลชุมชน (รพช.) สป.สธ.", name: "รพ.สามพราน", org: "สป.สธ.", prov: "นครปฐม", time: "1-1.5 ชม.", 
+              lat: 13.731441, lng: 100.219808, trainType: "ส่งเรียนสถาบันหลัก", trainClass: "tag-train-out", lastOpen: "ส.ค. - ก.ย. 68 (โควตา สป.สธ.)", phone: "034 311 098" }
+        ];
+
+        const map = L.map('map').setView([13.721453, 100.495806], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const homeIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+        L.marker(homeCoords, {icon: homeIcon}).addTo(map)
+            .bindPopup("<b>จุดเริ่มต้น:</b><br>คอนโด Hive สาทร").openPopup();
+
+        const tbody = document.getElementById('tableBody');
+        let currentCategory = "";
+        let allRows = [];
+
+        hospitals.forEach((h) => {
+            if (h.cat !== currentCategory) {
+                let catRow = document.createElement('tr');
+                catRow.innerHTML = `<td colspan="4" class="category-header">${h.cat}</td>`;
+                tbody.appendChild(catRow);
+                currentCategory = h.cat;
+            }
+
+            let popupContent = `
+                <div class="hospital-popup">
+                    <h3>${h.name}</h3>
+                    <p><b>🏢 สังกัด:</b> ${h.org}</p>
+                    <p><b>📍 พื้นที่:</b> จ.${h.prov} (ไป-กลับ ${h.time})</p>
+                    <p><b>🎓 การเรียน:</b> ${h.trainType}</p>
+                    <p><b>🗓️ รับสมัครล่าสุด:</b> ${h.lastOpen}</p>
+                    <p><b>📞 ติดต่อ:</b> <a href="tel:${h.phone.replace(/ /g,'')}">${h.phone}</a></p>
+                    <a href="https://www.google.com/maps/dir/?api=1&origin=${homeCoords[0]},${homeCoords[1]}&destination=${h.lat},${h.lng}" target="_blank" class="btn-nav">📍 นำทางด้วย Google Maps</a>
+                </div>
+            `;
+            
+            // แยกสีหมุด: ศูนย์การแพทย์ (สีม่วง), รพช. (สีเขียว), รพ.สอนเอง (สีทอง), รพ.ต้นสังกัดทั่วไป (สีน้ำเงิน)
+            let markerColor = h.cat.includes("ศูนย์การแพทย์") ? "violet" : 
+                              h.cat.includes("รพช.") ? "green" : 
+                              (h.trainType.includes("สอนเอง") && !h.trainType.includes("บางสาขา") ? "gold" : "blue");
+                              
+            let customIcon = L.icon({
+                iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${markerColor}.png`,
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            let marker = L.marker([h.lat, h.lng], {icon: customIcon}).addTo(map).bindPopup(popupContent);
+
+            let tr = document.createElement('tr');
+            tr.className = "data-row";
+            tr.innerHTML = `
+                <td style="font-weight: 500; color: var(--primary);">${h.name}</td>
+                <td style="font-size: 12px; color: #475569;">${h.org}</td>
+                <td>จ.${h.prov}<br><span style="font-size: 11px; color: #888;">(${h.time})</span></td>
+                <td><span class="tag ${h.trainClass}">${h.trainType}</span></td>
+            `;
+            
+            allRows.push(tr);
+
+            tr.onclick = () => {
+                map.flyTo([h.lat, h.lng], 15, { duration: 1 });
+                marker.openPopup();
+                allRows.forEach(r => r.classList.remove('active-row'));
+                tr.classList.add('active-row');
+                
+                if (window.innerWidth < 768) {
+                    document.querySelector('.map-section').scrollIntoView({ behavior: 'smooth' });
+                }
+            };
+            tbody.appendChild(tr);
+        });
+    </script>
+</body>
+</html>
